@@ -213,7 +213,7 @@ const aiSuggestTasks = async (req, res) => {
         if (!goal) return res.status(400).json({ message: 'Goal is required' });
 
         const completion = await groq.chat.completions.create({
-            model: 'qwen/qwen3-32b-chat',
+           model: 'qwen-qwq-32b',  // ← CHANGE THIS
             messages: [{
                 role: 'system',
                 content: `You are a task breakdown expert. Your job is to break down goals into specific, actionable tasks.
@@ -316,7 +316,7 @@ Now respond to the user's question using these rules.`;
             : { content: currentQuestion || 'Hello' };
 
         const completion = await groq.chat.completions.create({
-            model: 'qwen/qwen3-32b-chat',
+    model: 'qwen-qwq-32b',  // ← CHANGE THIS ONE LINE
             messages: [
                 {
                     role: 'system',
