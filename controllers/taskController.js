@@ -2,44 +2,29 @@ const Task = require('../models/task');
 const Groq = require('groq-sdk');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-//@desc   Get all tasks for logged-in user
-//@route   GET /api/tasks/
-//@access  Private
 const getTasks = async (req, res) => {
     try {
         const { status } = req.query;
         let filter = { user: req.user._id };
         if (status) filter.status = status;
-
         let tasks = await Task.find(filter).sort({ dueDate: 1 });
-
         tasks = tasks.map((task) => {
             const completedCount = task.todoChecklist.filter(item => item.completed).length;
             return { ...task._doc, completedTodoCount: completedCount };
         });
-
         const allTasks = await Task.countDocuments({ user: req.user._id });
         const pendingTasks = await Task.countDocuments({ user: req.user._id, status: 'pending' });
         const inProgressTasks = await Task.countDocuments({ user: req.user._id, status: 'in-progress' });
         const completedTasks = await Task.countDocuments({ user: req.user._id, status: 'completed' });
-
         res.json({
             tasks,
-            statusSummary: {
-                all: allTasks,
-                pending: pendingTasks,
-                inProgress: inProgressTasks,
-                completed: completedTasks,
-            }
+            statusSummary: { all: allTasks, pending: pendingTasks, inProgress: inProgressTasks, completed: completedTasks }
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
-//@desc   Get Task by ID
-//@route   GET /api/tasks/:id
-//@access  Private
 const getTaskById = async (req, res) => {
     try {
         const task = await Task.findOne({ _id: req.params.id, user: req.user._id });
@@ -50,39 +35,23 @@ const getTaskById = async (req, res) => {
     }
 };
 
-//@desc   Create a new task
-//@route   POST /api/tasks/
-//@access  Private
 const createTask = async (req, res) => {
     try {
         const { title, description, priority, status, dueDate, scheduledTime, category, todoChecklist } = req.body;
-
         const task = await Task.create({
-            title,
-            description,
-            priority,
-            status,
-            dueDate,
-            scheduledTime,
-            category,
-            todoChecklist,
-            user: req.user._id,
+            title, description, priority, status, dueDate,
+            scheduledTime, category, todoChecklist, user: req.user._id,
         });
-
         res.status(201).json({ message: 'Task created successfully', task });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
-//@desc   Update Task
-//@route   PUT /api/tasks/:id
-//@access  Private
 const updateTask = async (req, res) => {
     try {
         const task = await Task.findOne({ _id: req.params.id, user: req.user._id });
         if (!task) return res.status(404).json({ message: 'Task not found' });
-
         task.title = req.body.title || task.title;
         task.description = req.body.description || task.description;
         task.priority = req.body.priority || task.priority;
@@ -91,7 +60,6 @@ const updateTask = async (req, res) => {
         task.scheduledTime = req.body.scheduledTime || task.scheduledTime;
         task.category = req.body.category || task.category;
         task.todoChecklist = req.body.todoChecklist || task.todoChecklist;
-
         const updatedTask = await task.save();
         res.json({ message: 'Task updated successfully', task: updatedTask });
     } catch (error) {
@@ -99,14 +67,10 @@ const updateTask = async (req, res) => {
     }
 };
 
-//@desc   Delete a task
-//@route   DELETE /api/tasks/:id
-//@access  Private
 const deleteTask = async (req, res) => {
     try {
         const task = await Task.findOne({ _id: req.params.id, user: req.user._id });
         if (!task) return res.status(404).json({ message: 'Task not found' });
-
         await task.deleteOne();
         res.status(200).json({ message: 'Task deleted successfully' });
     } catch (error) {
@@ -114,21 +78,15 @@ const deleteTask = async (req, res) => {
     }
 };
 
-//@desc   Update Task status
-//@route   PUT /api/tasks/:id/status
-//@access  Private
 const updateTaskStatus = async (req, res) => {
     try {
         const task = await Task.findOne({ _id: req.params.id, user: req.user._id });
         if (!task) return res.status(404).json({ message: 'Task not found' });
-
         task.status = req.body.status || task.status;
-
         if (task.status === 'completed') {
             task.todoChecklist.forEach((item) => (item.completed = true));
             task.progress = 100;
         }
-
         await task.save();
         res.status(200).json({ message: 'Task status updated', task });
     } catch (error) {
@@ -136,25 +94,18 @@ const updateTaskStatus = async (req, res) => {
     }
 };
 
-//@desc   Update Task checklist
-//@route   PUT /api/tasks/:id/todo
-//@access  Private
 const updateTaskChecklist = async (req, res) => {
     try {
         const { todoChecklist } = req.body;
         const task = await Task.findOne({ _id: req.params.id, user: req.user._id });
         if (!task) return res.status(404).json({ message: 'Task not found' });
-
         task.todoChecklist = todoChecklist;
-
         const completedCount = task.todoChecklist.filter(item => item.completed).length;
         const totalItems = task.todoChecklist.length;
         task.progress = totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0;
-
         if (task.progress === 100) task.status = 'completed';
         else if (task.progress > 0) task.status = 'in-progress';
         else task.status = 'pending';
-
         await task.save();
         res.status(200).json({ message: 'Task checklist updated', task });
     } catch (error) {
@@ -162,27 +113,18 @@ const updateTaskChecklist = async (req, res) => {
     }
 };
 
-//@desc   Dashboard Data for logged-in user
-//@route   GET /api/tasks/dashboard-data
-//@access  Private
 const getDashboardData = async (req, res) => {
     try {
         const userId = req.user._id;
-
         const totalTasks = await Task.countDocuments({ user: userId });
         const pendingTasks = await Task.countDocuments({ user: userId, status: 'pending' });
         const inProgressTasks = await Task.countDocuments({ user: userId, status: 'in-progress' });
         const completedTasks = await Task.countDocuments({ user: userId, status: 'completed' });
-
         const priorityData = await Task.aggregate([
             { $match: { user: userId } },
             { $group: { _id: '$priority', count: { $sum: 1 } } }
         ]);
-
-        const recentTasks = await Task.find({ user: userId })
-            .sort({ createdAt: -1 })
-            .limit(10);
-
+        const recentTasks = await Task.find({ user: userId }).sort({ createdAt: -1 }).limit(10);
         const today = new Date();
         const nextWeek = new Date();
         nextWeek.setDate(today.getDate() + 7);
@@ -191,209 +133,229 @@ const getDashboardData = async (req, res) => {
             dueDate: { $gte: today, $lte: nextWeek },
             status: { $ne: 'completed' }
         }).sort({ dueDate: 1 });
-
         res.status(200).json({
             totalTasks,
             statusSummary: { pending: pendingTasks, inProgress: inProgressTasks, completed: completedTasks },
-            priorityData,
-            recentTasks,
-            upcomingTasks,
+            priorityData, recentTasks, upcomingTasks,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
-//@desc   AI Suggest tasks from a goal
-//@route   POST /api/tasks/ai-suggest
-//@access  Private
+// ── HELPER: detect total days from goal text ─────────────────────────────
+const extractTotalDays = (goal) => {
+    const text = goal.toLowerCase();
+    const patterns = [
+        { regex: /(\d+)\s*week/,   mult: 7 },
+        { regex: /(\d+)\s*month/,  mult: 30 },
+        { regex: /(\d+)\s*day/,    mult: 1 },
+        { regex: /(\d+)\s*hour/,   mult: 1 },
+    ];
+    for (const p of patterns) {
+        const m = text.match(p.regex);
+        if (m) return parseInt(m[1]) * p.mult;
+    }
+    return 7; // default 7 days
+};
+
+// ── AI SUGGEST ─────────────────────────────────────────────────────────────
 const aiSuggestTasks = async (req, res) => {
     try {
         const { goal } = req.body;
         if (!goal) return res.status(400).json({ message: 'Goal is required' });
 
-        const completion = await groq.chat.completions.create({
-           model: 'openai/gpt-oss-20b',  // ← CHANGE THIS
-            messages: [{
-                role: 'system',
-                content: `You are a task breakdown expert. Your job is to break down goals into specific, actionable tasks.
-
-RULES:
-1. Always return ONLY valid JSON - no explanations
-2. Each task must have a clear, specific title
-3. Include a short, actionable description
-4. Assign priority based on importance: high (critical), medium (important), low (nice-to-have)
-5. dueDays: estimate how many days from today this should be done
-
-Format: [{"title":"Clear action title","description":"What to do exactly","priority":"high|medium|low","dueDays":number}]`
-            }, {
-                role: 'user',
-                content: `Break down this goal into 4-6 specific, actionable tasks: "${goal}"`
-            }],
-            temperature: 0.6,
-            max_tokens: 800,
-        });
-
-        const text = completion.choices[0].message.content;
-        const clean = text.replace(/```json|```|`/g, '').trim();
-        
-        let suggestions;
-        try {
-            suggestions = JSON.parse(clean);
-            if (!Array.isArray(suggestions)) {
-                throw new Error('Expected array');
-            }
-        } catch (parseError) {
-            console.warn('AI parse failed, using fallback:', parseError.message);
-            suggestions = [
-                { title: `Research and plan: ${goal}`, description: 'Gather all necessary information and create a plan', priority: 'high', dueDays: 1 },
-                { title: 'Break down into subtasks', description: 'Create detailed subtasks for each major step', priority: 'high', dueDays: 2 },
-                { title: 'Start executing priority items', description: 'Begin work on the most critical tasks first', priority: 'medium', dueDays: 3 },
-                { title: 'Review and adjust progress', description: 'Check progress and adjust plan if needed', priority: 'low', dueDays: 5 },
-            ];
-        }
-
-        const today = new Date();
-        const tasks = suggestions.map(s => ({
-            title: s.title || 'Untitled task',
-            description: s.description || 'No description provided',
-            priority: ['high', 'medium', 'low'].includes(s.priority) ? s.priority : 'medium',
-            dueDate: new Date(today.getTime() + (s.dueDays || 3) * 24 * 60 * 60 * 1000),
-        }));
-
-        res.status(200).json({ tasks });
-    } catch (error) {
-        console.error('AI Suggest Error:', error);
-        const fallbackTasks = [
-            { title: `Plan: ${req.body.goal || 'Your goal'}`, description: 'Create a step-by-step plan', priority: 'high', dueDate: new Date(Date.now() + 86400000) },
-            { title: 'Research and gather materials', description: 'Collect everything you need', priority: 'medium', dueDate: new Date(Date.now() + 172800000) },
-            { title: 'Execute first milestone', description: 'Complete the most important part first', priority: 'high', dueDate: new Date(Date.now() + 259200000) },
-            { title: 'Review and adjust', description: 'Check progress and make adjustments', priority: 'low', dueDate: new Date(Date.now() + 345600000) },
-        ];
-        res.status(200).json({ tasks: fallbackTasks });
-    }
-};
-
-//@desc   AI Chat Assistant with task context
-//@route   POST /api/tasks/ai-chat
-//@access  Private
-const aiChat = async (req, res) => {
-    try {
-        const { messages, taskSummary, currentQuestion } = req.body;
-
-        const systemPrompt = `You are a helpful personal task management assistant.
-
-## IMPORTANT CONTEXT:
-- Today's Date: ${new Date().toLocaleDateString()}
-- User's Tasks: ${taskSummary}
-
-## YOUR RULES (FOLLOW STRICTLY):
-1. If asked "what to do first" → recommend the HIGHEST PRIORITY task that's due soonest
-2. If asked about overdue tasks → list them with urgency
-3. If no tasks exist → suggest creating a simple starting task
-4. Keep responses under 3 sentences
-5. Be specific - reference actual task titles
-6. If you don't know, say so clearly
-7. NEVER say "I don't have enough information" - use the tasks provided
-
-## EXAMPLES OF GOOD RESPONSES:
-Q: "What should I focus on today?"
-A: "Focus on 'Complete project report' first - it's high priority and due tomorrow. Then work on 'Review meeting notes'."
-
-Q: "Do I have any overdue tasks?"
-A: "Yes, 'Submit weekly report' is overdue by 2 days. Please complete it now."
-
-Q: "What are my tasks?"
-A: "You have 5 tasks: 2 high priority ('Project report', 'Client meeting'), 2 medium, and 1 low. 'Project report' is due tomorrow."
-
-Q: "I have no tasks"
-A: "You currently have no tasks. Try setting a goal like 'Learn Python' and I'll break it down for you!"
-
-Now respond to the user's question using these rules.`;
-
-        const lastUserMessage = messages && messages.length > 0 
-            ? messages[messages.length - 1] 
-            : { content: currentQuestion || 'Hello' };
+        const totalDays = extractTotalDays(goal);
+        // Scale task count: 1 week = 7 tasks, 2 weeks = 10 tasks, 1 month = 14 tasks
+        const taskCount = Math.min(14, Math.max(5, Math.ceil(totalDays * 0.6)));
 
         const completion = await groq.chat.completions.create({
-    model: 'openai/gpt-oss-20b',  // ← CHANGE THIS ONE LINE
+            model: 'openai/gpt-oss-20b',
             messages: [
                 {
                     role: 'system',
-                    content: systemPrompt
+                    content: `You are a task breakdown assistant. Return ONLY a valid JSON array. No markdown, no explanation, no extra text whatsoever.
+Array format: [{"title":"...","description":"...","priority":"high|medium|low","dueDay":number,"dueHour":number}]
+Rules:
+- Generate exactly ${taskCount} tasks spread across ${totalDays} days
+- dueDay: which day (1 to ${totalDays}) this task should be completed
+- dueHour: realistic hour for the task (8=morning, 12=noon, 15=afternoon, 18=evening, 21=night)
+- Spread tasks evenly — don't put all tasks on day 1
+- Make titles very specific to the goal, not generic
+- First tasks should be high priority, later ones medium/low`
                 },
-                ...(messages || []),
+                {
+                    role: 'user',
+                    content: `Goal: "${goal}" (${totalDays} days total)\nGenerate ${taskCount} specific tasks. Return only JSON array.`
+                }
             ],
-            temperature: 0.5,
-            max_tokens: 400,
+            temperature: 0.3,
+            max_tokens: 1200,
         });
 
-        const reply = completion.choices[0].message.content;
+        let text = completion.choices[0].message.content || '';
+        text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        text = text.replace(/```json|```/g, '').trim();
 
-        if (!reply || reply.length < 5 || reply.includes("I don't have enough information")) {
-            console.warn('AI gave poor response, using fallback');
-            const fallbackReply = generateFallbackReply(lastUserMessage.content, taskSummary);
-            return res.status(200).json({ reply: fallbackReply });
-        }
+        const match = text.match(/\[[\s\S]*\]/);
+        if (!match) throw new Error('No JSON array in response');
 
-        res.status(200).json({ reply });
+        const suggestions = JSON.parse(match[0]);
+        if (!Array.isArray(suggestions)) throw new Error('Expected array');
+
+        const today = new Date();
+        // Set time to midnight so dueDay calculations are clean
+        today.setHours(0, 0, 0, 0);
+
+        const tasks = suggestions.map(s => {
+            const dueDay = Math.max(1, Math.min(s.dueDay || 1, totalDays));
+            const dueHour = s.dueHour || 9;
+            // Calculate due date: today + dueDay days, at the specified hour
+            const dueDate = new Date(today);
+            dueDate.setDate(today.getDate() + dueDay);
+            dueDate.setHours(dueHour, 0, 0, 0);
+
+            return {
+                title: s.title || 'Task',
+                description: s.description || '',
+                priority: ['high', 'medium', 'low'].includes(s.priority) ? s.priority : 'medium',
+                dueDate,
+            };
+        });
+
+        res.status(200).json({ tasks });
     } catch (error) {
-        console.error('AI Chat Error:', error);
-        const fallbackReply = generateFallbackReply(req.body.messages?.[req.body.messages.length - 1]?.content || 'Hello', req.body.taskSummary || '');
-        res.status(200).json({ reply: fallbackReply });
+        console.error('AI Suggest Error:', error.message);
+        // Fallback with proper time distribution
+        const goal = req.body.goal || 'your goal';
+        const totalDays = extractTotalDays(req.body.goal || '');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const makeDate = (day, hour) => {
+            const d = new Date(today);
+            d.setDate(today.getDate() + day);
+            d.setHours(hour, 0, 0, 0);
+            return d;
+        };
+        res.status(200).json({
+            tasks: [
+                { title: `Research and plan: ${goal}`, description: 'Gather information and create a detailed plan', priority: 'high', dueDate: makeDate(1, 9) },
+                { title: `Set up environment for: ${goal}`, description: 'Prepare tools, resources, and workspace needed', priority: 'high', dueDate: makeDate(Math.ceil(totalDays * 0.2), 10) },
+                { title: `Complete first milestone: ${goal}`, description: 'Finish the first major step of your goal', priority: 'high', dueDate: makeDate(Math.ceil(totalDays * 0.4), 14) },
+                { title: `Practice and review: ${goal}`, description: 'Practice what you have learned and review progress', priority: 'medium', dueDate: makeDate(Math.ceil(totalDays * 0.6), 15) },
+                { title: `Complete second milestone: ${goal}`, description: 'Finish the second major step', priority: 'medium', dueDate: makeDate(Math.ceil(totalDays * 0.8), 16) },
+                { title: `Final review and wrap up: ${goal}`, description: 'Review everything and confirm goal completion', priority: 'low', dueDate: makeDate(totalDays, 18) },
+            ]
+        });
     }
 };
 
-// Helper: Generate fallback responses when AI fails
-function generateFallbackReply(question, taskSummary) {
-    const lowerQ = question.toLowerCase();
-    const taskList = taskSummary || '';
-    
-    const hasTasks = taskList && taskList.includes('•') && taskList.length > 20;
-    
-    if (!hasTasks) {
-        return "You don't have any tasks yet. Try setting a goal like 'Learn Python in 2 weeks' and I'll break it down for you! 🚀";
-    }
-    
-    if (lowerQ.includes('focus') || lowerQ.includes('first') || lowerQ.includes('priority')) {
-        const lines = taskList.split('•').filter(l => l.trim());
-        const highPriority = lines.find(l => l.includes('high'));
-        if (highPriority) {
-            const taskName = highPriority.split('-')[0]?.trim() || 'your high priority task';
-            return `Focus on "${taskName}" first - it's your highest priority task and should be completed soon. ✅`;
-        }
-        return "Check your 'high priority' tasks first. They're the most important ones to complete. 💪";
-    }
-    
-    if (lowerQ.includes('overdue') || lowerQ.includes('late')) {
-        const lines = taskList.split('•').filter(l => l.trim());
-        const overdue = lines.find(l => l.includes('overdue'));
-        if (overdue) {
-            const taskName = overdue.split('-')[0]?.trim() || 'your task';
-            return `⚠️ "${taskName}" is overdue! Please complete it as soon as possible.`;
-        }
-        return "Good news! You don't have any overdue tasks. Keep up the great work! 🎉";
-    }
-    
-    if (lowerQ.includes('task') || lowerQ.includes('have')) {
-        const lines = taskList.split('•').filter(l => l.trim());
-        const count = lines.length;
-        return `You have ${count} task${count > 1 ? 's' : ''}. ${taskList.substring(0, 200)}...`;
-    }
-    
-    return "I'm here to help! Try asking: 'What should I focus on?' or 'Show me my overdue tasks.' 😊";
-}
+// ── AI CHAT (with ability to create tasks) ────────────────────────────────
+const aiChat = async (req, res) => {
+    try {
+        const { messages } = req.body;
+        const userId = req.user._id;
 
-// ✅ CORRECT - Only ONE module.exports block
+        const tasks = await Task.find({ user: userId }).sort({ dueDate: 1 });
+        const now = new Date();
+
+        let taskContext = '';
+        if (tasks.length === 0) {
+            taskContext = 'The user has no tasks yet.';
+        } else {
+            taskContext = tasks.map(t => {
+                const due = t.dueDate ? new Date(t.dueDate) : null;
+                const isOverdue = due && due < now && t.status !== 'completed';
+                const dueStr = due ? due.toLocaleString() : 'no due date';
+                return `- ID:${t._id} | "${t.title}" | priority:${t.priority} | status:${t.status} | due:${dueStr}${isOverdue ? ' ⚠️OVERDUE' : ''}`;
+            }).join('\n');
+        }
+
+        const systemPrompt = `You are TaskFlow AI, a smart personal productivity assistant with the ability to CREATE tasks for the user.
+
+Today: ${now.toLocaleString()}
+
+USER'S CURRENT TASKS:
+${taskContext}
+
+YOUR CAPABILITIES:
+1. Answer questions about their tasks
+2. Give productivity advice
+3. CREATE new tasks when the user asks you to
+
+WHEN CREATING TASKS:
+- If the user asks you to add, create, set, or schedule a task — respond with a JSON block at the END of your message
+- Format: <TASKS>[{"title":"...","description":"...","priority":"high|medium|low","dueDays":number,"dueHour":number}]</TASKS>
+- dueDays: days from today (0=today, 1=tomorrow, etc.)
+- dueHour: 8=morning, 12=noon, 15=afternoon, 18=evening
+- You can create multiple tasks in one go
+- After the JSON block, confirm what you created in plain text
+
+RULES:
+- Be specific — use actual task titles in your answers
+- Keep responses short (2-4 sentences) unless creating tasks
+- If user asks what to focus on → recommend highest priority task due soonest
+- Never say you don't have information — you have the full task list above
+- Be friendly and encouraging`;
+
+        const completion = await groq.chat.completions.create({
+            model: 'openai/gpt-oss-20b',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                ...(messages || []),
+            ],
+            temperature: 0.4,
+            max_tokens: 600,
+        });
+
+        let reply = completion.choices[0].message.content || '';
+        reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+        // Check if AI wants to create tasks
+        const taskMatch = reply.match(/<TASKS>([\s\S]*?)<\/TASKS>/);
+        let createdTasks = [];
+
+        if (taskMatch) {
+            try {
+                const taskData = JSON.parse(taskMatch[1]);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                for (const t of taskData) {
+                    const dueDate = new Date(today);
+                    dueDate.setDate(today.getDate() + (t.dueDays || 0));
+                    dueDate.setHours(t.dueHour || 9, 0, 0, 0);
+
+                    const newTask = await Task.create({
+                        title: t.title,
+                        description: t.description || '',
+                        priority: ['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
+                        status: 'pending',
+                        dueDate,
+                        category: 'General',
+                        user: userId,
+                    });
+                    createdTasks.push(newTask);
+                }
+                // Remove the JSON block from the reply shown to user
+                reply = reply.replace(/<TASKS>[\s\S]*?<\/TASKS>/g, '').trim();
+            } catch (e) {
+                console.error('Task creation from chat failed:', e.message);
+            }
+        }
+
+        res.status(200).json({ reply, createdTasks });
+    } catch (error) {
+        console.error('AI Chat Error:', error.message);
+        res.status(200).json({
+            reply: "I'm having trouble connecting right now. Please try again in a moment.",
+            createdTasks: []
+        });
+    }
+};
+
 module.exports = {
-    getTasks,
-    getTaskById,
-    createTask,
-    updateTask,
-    deleteTask,
-    updateTaskStatus,
-    updateTaskChecklist,
-    getDashboardData,
-    aiSuggestTasks,
-    aiChat,
+    getTasks, getTaskById, createTask, updateTask, deleteTask,
+    updateTaskStatus, updateTaskChecklist, getDashboardData,
+    aiSuggestTasks, aiChat,
 };
