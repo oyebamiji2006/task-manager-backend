@@ -156,7 +156,7 @@ const extractTotalDays = (goal) => {
         const m = text.match(p.regex);
         if (m) return parseInt(m[1]) * p.mult;
     }
-    return 7; // default 7 days
+    return 7;
 };
 
 // ── AI SUGGEST ─────────────────────────────────────────────────────────────
@@ -166,7 +166,6 @@ const aiSuggestTasks = async (req, res) => {
         if (!goal) return res.status(400).json({ message: 'Goal is required' });
 
         const totalDays = extractTotalDays(goal);
-        // Scale task count: 1 week = 7 tasks, 2 weeks = 10 tasks, 1 month = 14 tasks
         const taskCount = Math.min(14, Math.max(5, Math.ceil(totalDays * 0.6)));
 
         const completion = await groq.chat.completions.create({
@@ -204,15 +203,13 @@ Rules:
         if (!Array.isArray(suggestions)) throw new Error('Expected array');
 
         const today = new Date();
-        // Set time to midnight so dueDay calculations are clean
         today.setHours(0, 0, 0, 0);
 
         const tasks = suggestions.map(s => {
             const dueDay = Math.max(1, Math.min(s.dueDay || 1, totalDays));
             const dueHour = s.dueHour || 9;
-            // Calculate due date: today + dueDay days, at the specified hour
-            const dueDate = new Date(today);
-            dueDate.setDate(today.getDate() + dueDay);
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + dueDay);
             dueDate.setHours(dueHour, 0, 0, 0);
 
             return {
@@ -226,14 +223,13 @@ Rules:
         res.status(200).json({ tasks });
     } catch (error) {
         console.error('AI Suggest Error:', error.message);
-        // Fallback with proper time distribution
         const goal = req.body.goal || 'your goal';
         const totalDays = extractTotalDays(req.body.goal || '');
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const makeDate = (day, hour) => {
-            const d = new Date(today);
-            d.setDate(today.getDate() + day);
+            const d = new Date();
+            d.setDate(d.getDate() + day);
             d.setHours(hour, 0, 0, 0);
             return d;
         };
@@ -287,7 +283,7 @@ WHEN CREATING TASKS:
 - If the user asks you to add, create, set, or schedule a task — respond with a JSON block at the END of your message
 - Format: <TASKS>[{"title":"...","description":"...","priority":"high|medium|low","dueDays":number,"dueHour":number}]</TASKS>
 - dueDays: days from today (0=today, 1=tomorrow, etc.)
-- dueHour: 8=morning, 12=noon, 15=afternoon, 18=evening
+- dueHour: extract EXACTLY from user message if they say "2pm"=14, "3pm"=15, "9am"=9. If no time mentioned, use 9.
 - You can create multiple tasks in one go
 - After the JSON block, confirm what you created in plain text
 
@@ -311,20 +307,29 @@ RULES:
         let reply = completion.choices[0].message.content || '';
         reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
-        // Check if AI wants to create tasks
         const taskMatch = reply.match(/<TASKS>([\s\S]*?)<\/TASKS>/);
         let createdTasks = [];
 
         if (taskMatch) {
             try {
                 const taskData = JSON.parse(taskMatch[1]);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
 
                 for (const t of taskData) {
-                    const dueDate = new Date(today);
-                    dueDate.setDate(today.getDate() + (t.dueDays || 0));
-                    dueDate.setHours(t.dueHour || 9, 0, 0, 0);
+                    // ✅ FIXED: Extract exact time from user message
+                    const dueDate = new Date();
+                    dueDate.setDate(dueDate.getDate() + (t.dueDays || 0));
+                    
+                    // 🔥 Time extraction from user message
+                    const userText = JSON.stringify(messages || '').toLowerCase();
+                    const timeMatch = userText.match(/(\d{1,2})\s*(am|pm)/);
+                    if (timeMatch) {
+                        let hour = parseInt(timeMatch[1]);
+                        if (timeMatch[2] === 'pm' && hour !== 12) hour += 12;
+                        if (timeMatch[2] === 'am' && hour === 12) hour = 0;
+                        dueDate.setHours(hour, 0, 0, 0);
+                    } else {
+                        dueDate.setHours(t.dueHour || 9, 0, 0, 0);
+                    }
 
                     const newTask = await Task.create({
                         title: t.title,
@@ -337,7 +342,6 @@ RULES:
                     });
                     createdTasks.push(newTask);
                 }
-                // Remove the JSON block from the reply shown to user
                 reply = reply.replace(/<TASKS>[\s\S]*?<\/TASKS>/g, '').trim();
             } catch (e) {
                 console.error('Task creation from chat failed:', e.message);
