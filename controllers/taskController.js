@@ -2,6 +2,10 @@ const Task = require('../models/task');
 const Groq = require('groq-sdk');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// ── TIMEZONE OFFSET ──────────────────────────────────────────────────────
+// Nigeria (WAT) is UTC+1, so we subtract 1 hour when storing in UTC
+const TIMEZONE_OFFSET = 1;
+
 const getTasks = async (req, res) => {
     try {
         const { status } = req.query;
@@ -210,7 +214,8 @@ Rules:
             const dueHour = s.dueHour || 9;
             const dueDate = new Date();
             dueDate.setDate(dueDate.getDate() + dueDay);
-            dueDate.setHours(dueHour, 0, 0, 0);
+            // ✅ FIX: Store in UTC (subtract 1 hour for Nigeria WAT)
+            dueDate.setHours(dueHour - TIMEZONE_OFFSET, 0, 0, 0);
 
             return {
                 title: s.title || 'Task',
@@ -230,7 +235,8 @@ Rules:
         const makeDate = (day, hour) => {
             const d = new Date();
             d.setDate(d.getDate() + day);
-            d.setHours(hour, 0, 0, 0);
+            // ✅ FIX: Store in UTC (subtract 1 hour for Nigeria WAT)
+            d.setHours(hour - TIMEZONE_OFFSET, 0, 0, 0);
             return d;
         };
         res.status(200).json({
@@ -315,20 +321,19 @@ RULES:
                 const taskData = JSON.parse(taskMatch[1]);
 
                 for (const t of taskData) {
-                    // ✅ FIXED: Extract exact time from user message
                     const dueDate = new Date();
                     dueDate.setDate(dueDate.getDate() + (t.dueDays || 0));
                     
-                    // 🔥 Time extraction from user message
                     const userText = JSON.stringify(messages || '').toLowerCase();
                     const timeMatch = userText.match(/(\d{1,2})\s*(am|pm)/);
                     if (timeMatch) {
                         let hour = parseInt(timeMatch[1]);
                         if (timeMatch[2] === 'pm' && hour !== 12) hour += 12;
                         if (timeMatch[2] === 'am' && hour === 12) hour = 0;
-                        dueDate.setHours(hour, 0, 0, 0);
+                        // ✅ FIX: Store in UTC (subtract 1 hour for Nigeria WAT)
+                        dueDate.setHours(hour - TIMEZONE_OFFSET, 0, 0, 0);
                     } else {
-                        dueDate.setHours(t.dueHour || 9, 0, 0, 0);
+                        dueDate.setHours((t.dueHour || 9) - TIMEZONE_OFFSET, 0, 0, 0);
                     }
 
                     const newTask = await Task.create({
